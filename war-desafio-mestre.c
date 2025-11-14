@@ -1,14 +1,15 @@
 #include <stdio.h>
 #include <stdlib.h> // calloc, free, rand, srand
 #include <time.h>   // time(NULL)
-#include <string.h> // strcmp
+#include <string.h> // strncpy
 
-// --- CONSTANTES ---
+// --- CONSTANTES GLOBAIS ---
 #define NUM_TERRITORIOS 5
 #define ID_JOGADOR_HUMANO 1
 #define ID_JOGADOR_VERDE 2
 #define MAX_TROPAS_INICIAIS 10
 
+// Tipos de Missão
 #define TIPO_DESTRUIR_VERDE 1
 #define TIPO_CONQUISTAR_TOTAL 2
 #define TIPO_CONQUISTAR_ESPECIFICO 3
@@ -27,25 +28,18 @@ typedef struct
 // Estrutura para representar a Missão do Jogador
 typedef struct
 {
-    int tipo;    // 1: Destruir Verde, 2: Conquistar X territórios
-    int alvo_id; // ID do alvo (se aplicável, ex: ID_JOGADOR_VERDE)
-    int valor;   // Número de territórios a conquistar (se aplicável, ex: 3)
+    int tipo;    // 1: Destruir Verde, 2: Conquistar X total, 3: Conquistar específico
+    int valor;   // Número de territórios a conquistar OU ID do território específico
 } Missao;
 
-// --- PROTÓTIPOS DE FUNÇÕES (Modularização) ---
+// --- PROTÓTIPOS DE FUNÇÕES ---
 
-// Funções de Inicialização e Boas Práticas
+// Funções de Inicialização e Memória
 void inicializar_gerador_aleatorio(void);
 Territorio *criar_mapa_inicial(const int num_territorios);
 void liberar_memoria(Territorio *territorios);
 
-// Funções de Missão
-Missao gerar_missao_aleatoria(void);
-void exibir_missao(const Missao *missao, const Territorio *mapa, const int num_territorios);
-int verificar_missao(const Missao *missao, const Territorio *mapa, const int num_territorios);
-int contar_territorios_do_dono(const Territorio *mapa, const int num_territorios, const int dono_id);
-int contar_tropas_do_dono(const Territorio *mapa, const int num_territorios, const int dono_id);
-
+// Funções de Busca
 const Territorio *encontrar_territorio_por_id(const Territorio *mapa, const int num_territorios, const int id_alvo);
 
 // Funções de Jogo
@@ -53,6 +47,15 @@ void exibir_mapa(const Territorio *mapa, const int num_territorios);
 void exibir_menu(void);
 void realizar_ataque(Territorio *atacante, Territorio *defensor);
 int processar_ataque(Territorio *mapa, const int num_territorios);
+void limpar_buffer(void);
+
+// Funções de Missão
+int contar_territorios_do_dono(const Territorio *mapa, const int num_territorios, const int dono_id);
+int contar_tropas_do_dono(const Territorio *mapa, const int num_territorios, const int dono_id);
+void gerar_missao_aleatoria(Missao *missao_alvo);
+void exibir_missao(const Missao *missao, const Territorio *mapa, const int num_territorios);
+int verificar_missao(const Missao *missao, const Territorio *mapa, const int num_territorios);
+
 
 // --- FUNÇÃO PRINCIPAL ---
 int main()
@@ -60,10 +63,11 @@ int main()
     Territorio *mapa = NULL;
     Missao missao_jogador;
     int opcao;
+    int vitoria = 0;
 
     inicializar_gerador_aleatorio();
 
-    // Alocação e Inicialização
+    // 1. Alocação e Inicialização
     mapa = criar_mapa_inicial(NUM_TERRITORIOS);
     if (mapa == NULL)
     {
@@ -71,64 +75,65 @@ int main()
         return 1;
     }
 
-    // Atribuir Missão
-    missao_jogador = gerar_missao_aleatoria();
+    // 2. Atribuir Missão
+    gerar_missao_aleatoria(&missao_jogador);
     printf("\n>>> MISSAO RECEBIDA <<<\n");
     exibir_missao(&missao_jogador, mapa, NUM_TERRITORIOS);
     printf("--------------------------\n");
 
-    // Loop Principal do Jogo
+    // 3. Loop Principal do Jogo
     do
     {
         exibir_mapa(mapa, NUM_TERRITORIOS);
         exibir_menu();
         printf("Escolha uma opção: ");
-        if (scanf("%d", &opcao) != 1)
+        // Trata a leitura do menu
+        if (scanf("%d%*[^\n]", &opcao) != 1)
         {
             opcao = -1; // Opção inválida
-            while (getchar() != '\n')
-                ; // Limpa buffer
+            limpar_buffer();
         }
-
-        switch (opcao)
+      
+            switch (opcao)
         {
         case 1: // Atacar
-            if (processar_ataque(mapa, NUM_TERRITORIOS))
+            processar_ataque(mapa, NUM_TERRITORIOS);
+            
+            // Verifica a vitória após a ação
+            if (verificar_missao(&missao_jogador, mapa, NUM_TERRITORIOS))
             {
-                // Se houver alguma mudança no mapa (conquista ou perda de tropas)
-                if (verificar_missao(&missao_jogador, mapa, NUM_TERRITORIOS))
-                {
-                    printf("\n##################################\n");
-                    printf("### VOCÊ COMPLETOU SUA MISSÃO! ###\n");
-                    printf("###           VITÓRIA!         ###\n");
-                    printf("##################################\n");
-                    opcao = 0; // Encerra o jogo
-                }
+                vitoria = 1;
             }
             break;
+            
         case 2: // Verificar Missão
+            printf("\n>>> VERIFICACAO DA MISSAO <<<\n");
             exibir_missao(&missao_jogador, mapa, NUM_TERRITORIOS);
             if (verificar_missao(&missao_jogador, mapa, NUM_TERRITORIOS))
             {
-                printf("\n##################################\n");
-                printf("### VOCÊ COMPLETOU SUA MISSÃO! ###\n");
-                printf("###           VITÓRIA!         ###\n");
-                printf("##################################\n");
+                printf("\n*** MISSAO CUMPRIDA! Pressione 0 para declarar vitoria. ***\n");
             }
             else
             {
                 printf("\n*** Missão em Andamento. Continue a Luta! ***\n");
             }
-
             printf("\nPressione ENTER para voltar ao Menu...");
-            while (getchar() != '\n')
-                ;      // Limpa o buffer
             getchar(); // Espera por ENTER
-
             break;
+            
         case 0: // Sair
-            printf("\nEncerrando o jogo. Até a próxima!\n");
+            printf("\nEncerrando o jogo. ");
+            if (vitoria)
+            {
+                printf("\n##################################\n");
+                printf("### VOCÊ COMPLETOU SUA MISSÃO! ###\n");
+                printf("###          VITÓRIA!        ###\n");
+                printf("##################################\n");
+            } else {
+                printf("Até a próxima!\n");
+            }
             break;
+            
         default:
             printf("\nOpção inválida. Tente novamente.\n");
             break;
@@ -136,12 +141,12 @@ int main()
 
     } while (opcao != 0);
 
-    // Limpeza
+    // 4. Limpeza
     liberar_memoria(mapa);
     return 0;
 }
 
-// --- IMPLEMENTAÇÃO DAS FUNÇÕES DE INICIALIZAÇÃO ---
+// --- IMPLEMENTAÇÃO DAS FUNÇÕES DE INICIALIZAÇÃO E MEMÓRIA ---
 
 /**
  * @brief Inicializa a semente do gerador de números aleatórios.
@@ -152,82 +157,44 @@ void inicializar_gerador_aleatorio(void)
 }
 
 /**
- * @brief Aloca o mapa e inicializa os territórios com nomes e tropas.
+ * @brief Limpa o buffer de entrada.
+ */
+void limpar_buffer(void)
+{
+    int c;
+    while ((c = getchar()) != '\n' && c != EOF);
+}
+
+/**
+ * @brief Aloca o mapa e inicializa os territórios.
  */
 Territorio *criar_mapa_inicial(const int num_territorios)
 {
     // Array de nomes para os territórios
     const char *nomes_territorios[] = {
-        "Amarelo",
-        "Verde",
-        "Azul",
-        "Branco",
+        "Amarelo", 
+        "Verde", 
+        "Azul", 
+        "Branco", 
         "Vermelho"
     };
 
-printf("\n--- INICIALIZANDO MAPA ---\n");
-for (int i = 0; i < num_territorios; i++)
-{
-    t[i].id = i + 1;
-   
-    strncpy(t[i].nome, nomes_territorios[i], sizeof(t[i].nome) - 1);
-        t[i].nome[sizeof(t[i].nome) - 1] = '\0'; // Garantir terminação nula
-
-    // Distribuição inicial (Ex: Territórios 1 e 2 para Humano, 3, 4, 5 para Verde)
-    if (i < 2)
-    {
-        t[i].dono_id = ID_JOGADOR_HUMANO;
-    }
-    else
-    {
-        t[i].dono_id = ID_JOGADOR_VERDE;
-    }
-    // Tropas iniciais: valor aleatório de 3 a MAX_TROPAS_INICIAIS
-    t[i].tropas = 3 + (rand() % (MAX_TROPAS_INICIAIS - 2));
-
-    printf("[ID %d] %s | Dono: %s | Tropas: %d\n", t[i].id, t[i].nome,
-           t[i].dono_id == ID_JOGADOR_HUMANO ? "HUMANO" : "VERDE", t[i].tropas);
-}
-printf("--------------------------\n");
-return t;
-
-void liberar_memoria(Territorio *territorios)
-{
-    if (territorios != NULL)
-    {
-        free(territorios);
-    }
-}
-
-
-// Linhas 201-232 atualizadas:
-Territorio *criar_mapa_inicial(const int num_territorios)
-{
-    // Array de nomes para os territórios (precisa ter no mínimo NUM_TERRITORIOS nomes)
-    const char *nomes_territorios[] = {
-        "Amarelo",  
-        "Verde",   
-        "Azul",   
-        "Branco",   
-        "Vermelho"     
-    };
-
-    Territorio *t = (Territorio *)calloc(num_territorios, sizeof(Territorio)); // ALOCAÇÃO PRIMEIRO
+    // Alocação de memória (Erro corrigido: faltava alocação no seu código)
+    Territorio *t = (Territorio *)calloc(num_territorios, sizeof(Territorio)); 
 
     if (t == NULL)
         return NULL;
-       
-
+        
     printf("\n--- INICIALIZANDO MAPA ---\n");
     for (int i = 0; i < num_territorios; i++)
     {
         t[i].id = i + 1;
 
-        // COPIAR O NOME PERSONALIZADO (AGORA 't' É VÁLIDO)
+        // Copia o nome
         strncpy(t[i].nome, nomes_territorios[i], sizeof(t[i].nome) - 1);
-        t[i].nome[sizeof(t[i].nome) - 1] = '\0'; // Garantir terminação nula
+        t[i].nome[sizeof(t[i].nome) - 1] = '\0'; 
 
-        // ... restante da lógica ...
+        // Distribuição inicial (Ex: Territórios 1 e 2 para Humano, 3, 4, 5 para Verde)
         if (i < 2)
         {
             t[i].dono_id = ID_JOGADOR_HUMANO;
@@ -235,14 +202,14 @@ Territorio *criar_mapa_inicial(const int num_territorios)
         else
         {
             t[i].dono_id = ID_JOGADOR_VERDE;
-    }
-    t[i].tropas = 3 + (rand() % (MAX_TROPAS_INICIAIS - 2));
+        }
+        // Tropas iniciais: valor aleatório de 3 a MAX_TROPAS_INICIAIS
+        t[i].tropas = 3 + (rand() % (MAX_TROPAS_INICIAIS - 2));
 
         printf("[ID %d] %s | Dono: %s | Tropas: %d\n", t[i].id, t[i].nome,
-               t[i].dono_id == ID_JOGADOR_HUMANO ? "HUMANO" : "VERDE", t[i].tropas);
+                   t[i].dono_id == ID_JOGADOR_HUMANO ? "HUMANO" : "VERDE", t[i].tropas);
     }
     printf("--------------------------\n");
-    // ...
     return t;
 }
 
@@ -257,99 +224,24 @@ void liberar_memoria(Territorio *territorios)
     }
 }
 
+// --- IMPLEMENTAÇÃO DAS FUNÇÕES DE BUSCA E CONTAGEM ---
 
 /**
- * @brief Gera uma missão aleatória para o jogador.
+ * @brief Encontra um território pelo ID.
+ * @return Ponteiro constante para o território encontrado, ou NULL.
  */
-
-Missao gerar_missao_aleatoria(void)
+const Territorio *encontrar_territorio_por_id(const Territorio *mapa, const int num_territorios, const int id_alvo)
 {
-    Missao m;
-    int tipo_missao = 1 + (rand() % 3); // 1,2 ou 3.
-
-    if (tipo_missao == TIPO_DESTRUIR_VERDE)
+    for (int i = 0; i < num_territorios; i++)
     {
-        // Missão 1: Destruir o Exército Verde (Reduzir tropas para 0)
-        m.tipo = TIPO_DESTRUIR_VERDE;
-        m.alvo_id = ID_JOGADOR_VERDE;
-        m.valor = 0;
-    }
-
-    else if (tipo_missao == TIPO_CONQUISTAR_TOTAL) // NOVO BLOC
-    {
-        // Missão 2: Conquistar 3 Territórios (Possuir 3 territórios no total)
-        m.tipo = TIPO_CONQUISTAR_TOTAL;
-        m.alvo_id = ID_JOGADOR_HUMANO; // O alvo é o próprio jogador
-        m.valor = 3;
-    }
-
-    else
-    {
-        // Missão 3: Conquistar 3 Territórios 
-        m.tipo = TIPO_CONQUISTAR_ESPECIFICO;
-        m.alvo_id = 3 + (rand() % (NUM_TERRITORIOS - 2));
-        m.valor = m.alvo_id;
-        ;
-    }
-    return m;
-}
-
-/**
- * @brief Exibe o objetivo da missão.
- */
-
-void exibir_missao(const Missao *missao, const Territorio *mapa, const int num_territorios)
-{
-    printf("\n* Sua Missão Atual é: ");
-    if (missao->tipo == TIPO_DESTRUIR_VERDE)
-    {
-        printf("Destruir o EXÉRCITO VERDE (Reduzir o total de tropas do VERDE a 0).\n");
-    }
-    else if (missao->tipo == TIPO_CONQUISTAR_TOTAL)
-    {
-        printf("Conquistar e Manter %d Territórios (atualmente você tem %d).\n",
-               missao->valor, contar_territorios_do_dono(mapa, num_territorios, ID_JOGADOR_HUMANO)); // Exibe o progresso
-    }
-    else if (missao->tipo == TIPO_CONQUISTAR_ESPECIFICO)
-    {
-        const Territorio *alvo = encontrar_territorio_por_id(mapa, num_territorios, missao->valor);
-        if (alvo != NULL)
+        if (mapa[i].id == id_alvo)
         {
-            printf("Conquistar o território ESPECÍFICO: '%s' (ID %d).\n", alvo->nome, alvo->id);
-        }
-        else
-        {
-            printf("Conquistar um território específico (ID %d). [Erro ao localizar nome]\n", missao->valor);
+            return &mapa[i];
         }
     }
+    return NULL;
 }
 
-/**
- * @brief Verifica se a missão foi cumprida.
- * @param missao Ponteiro constante para a missão.
- * @param mapa Ponteiro constante para o mapa.
- * @return 1 se a missão foi cumprida, 0 caso contrário.
- */
-int verificar_missao(const Missao *missao, const Territorio *mapa, const int num_territorios)
-{
-
-    if (missao->tipo == TIPO_DESTRUIR_VERDE)
-    {
-        return (contar_tropas_do_dono(mapa, num_territorios, ID_JOGADOR_VERDE) == 0);
-    }
-    else if (missao->tipo == TIPO_CONQUISTAR_TOTAL)
-    {
-        return (contar_territorios_do_dono(mapa, num_territorios, ID_JOGADOR_HUMANO) >= missao->valor);
-    }
-    else if (missao->tipo == TIPO_CONQUISTAR_ESPECIFICO)
-    {
-
-        const Territorio *alvo = encontrar_territorio_por_id(mapa, num_territorios, missao->valor);
-
-        return (alvo != NULL && alvo->dono_id == ID_JOGADOR_HUMANO);
-    }
-    return 0;
-}
 /**
  * @brief Conta quantos territórios pertencem a um dono específico.
  */
@@ -382,18 +274,106 @@ int contar_tropas_do_dono(const Territorio *mapa, const int num_territorios, con
     return total_tropas;
 }
 
+// --- IMPLEMENTAÇÃO DAS FUNÇÕES DE MISSÃO ---
+
+/**
+ * @brief Gera uma missão aleatória para o jogador.
+ */
+void gerar_missao_aleatoria(Missao *missao_alvo)
+{
+    
+    int tipo_missao = 1 + (rand() % 3); // 1, 2 ou 3.
+
+    if (tipo_missao == TIPO_DESTRUIR_VERDE)
+    {
+        // Missão 1: Destruir o Exército Verde
+        missao_alvo->tipo = TIPO_DESTRUIR_VERDE;
+        missao_alvo->valor = 0;
+    }
+    else if (tipo_missao == TIPO_CONQUISTAR_TOTAL)
+    {
+        // Missão 2: Conquistar 3 Territórios no total
+       missao_alvo->tipo = TIPO_CONQUISTAR_TOTAL;
+       missao_alvo->valor = 3;
+    }
+    else 
+    {
+        // Missão 3: Conquistar Território Específico.
+        // O alvo deve ser um território que não pertence ao HUMANO (ID 3, 4, ou 5 na inicialização padrão)
+       missao_alvo->tipo = TIPO_CONQUISTAR_ESPECIFICO;
+       missao_alvo->valor = 3 + (rand() % (NUM_TERRITORIOS - 2)); 
+    }
+}
+
+/**
+ * @brief Exibe o objetivo da missão.
+ */
+void exibir_missao(const Missao *missao, const Territorio *mapa, const int num_territorios)
+{
+    printf("\n* Sua Missão Atual é: ");
+    if (missao->tipo == TIPO_DESTRUIR_VERDE)
+    {
+        printf("Destruir o EXÉRCITO VERDE (Reduzir o total de tropas do VERDE a 0).\n");
+        printf("-> Tropas Verdes restantes: %d\n", contar_tropas_do_dono(mapa, num_territorios, ID_JOGADOR_VERDE));
+    }
+    else if (missao->tipo == TIPO_CONQUISTAR_TOTAL)
+    {
+        printf("Conquistar e Manter %d Territórios (atualmente você tem %d).\n",
+               missao->valor, contar_territorios_do_dono(mapa, num_territorios, ID_JOGADOR_HUMANO));
+    }
+    else if (missao->tipo == TIPO_CONQUISTAR_ESPECIFICO)
+    {
+        const Territorio *alvo = encontrar_territorio_por_id(mapa, num_territorios, missao->valor);
+        if (alvo != NULL)
+        {
+            printf("Conquistar o território ESPECÍFICO: '%s' (ID %d).\n", alvo->nome, alvo->id);
+            printf("-> Dono atual de '%s': %s\n", alvo->nome, 
+                   alvo->dono_id == ID_JOGADOR_HUMANO ? "HUMANO (Conquistado!)" : "VERDE (Inimigo)");
+        }
+        else
+        {
+            printf("Conquistar um território específico (ID %d). [Erro ao localizar nome]\n", missao->valor);
+        }
+    }
+}
+
+/**
+ * @brief Verifica se a missão foi cumprida.
+ * @return 1 se a missão foi cumprida, 0 caso contrário.
+ */
+int verificar_missao(const Missao *missao, const Territorio *mapa, const int num_territorios)
+{
+    if (missao->tipo == TIPO_DESTRUIR_VERDE)
+    {
+        // Se as tropas do Verde forem 0, a missão está completa.
+        return (contar_tropas_do_dono(mapa, num_territorios, ID_JOGADOR_VERDE) == 0);
+    }
+    else if (missao->tipo == TIPO_CONQUISTAR_TOTAL)
+    {
+        // Se o número de territórios do Humano for maior ou igual ao valor da missão.
+        return (contar_territorios_do_dono(mapa, num_territorios, ID_JOGADOR_HUMANO) >= missao->valor);
+    }
+    else if (missao->tipo == TIPO_CONQUISTAR_ESPECIFICO)
+    {
+        // Verifica se o território alvo (ID em missao->valor) pertence ao Humano.
+        const Territorio *alvo = encontrar_territorio_por_id(mapa, num_territorios, missao->valor);
+        
+        // Verifica se encontrou o alvo E se o dono é o HUMANO
+        return (alvo != NULL && alvo->dono_id == ID_JOGADOR_HUMANO);
+    }
+    return 0;
+}
+
 // --- IMPLEMENTAÇÃO DAS FUNÇÕES DE JOGO ---
 
 /**
  * @brief Exibe o estado atual do mapa.
- * @param mapa Ponteiro constante para o array de territórios (não pode ser modificado).
  */
 void exibir_mapa(const Territorio *mapa, const int num_territorios)
 {
     printf("\n\n*** MAPA ATUAL ***\n");
     for (int i = 0; i < num_territorios; i++)
     {
-        // Uso de const correctness no parâmetro
         printf("[ID: %d] %-15s | Dono: %-6s | Tropas: %d\n",
                mapa[i].id, mapa[i].nome,
                mapa[i].dono_id == ID_JOGADOR_HUMANO ? "HUMANO" : "VERDE", mapa[i].tropas);
@@ -415,17 +395,17 @@ void exibir_menu(void)
 
 /**
  * @brief Simula uma rodada de ataque entre dois territórios.
- * @param atacante Ponteiro para o território atacante (pode ser modificado).
- * @param defensor Ponteiro para o território defensor (pode ser modificado).
  */
 void realizar_ataque(Territorio *atacante, Territorio *defensor)
 {
-    // Verifica se o atacante tem tropas
+    // Verifica se o atacante tem tropas suficientes
     if (atacante->tropas <= 1)
     {
-        printf("Ataque cancelado: Atacante '%s' precisa de pelo menos 2 tropas para atacar (1 fica de defesa).\n", atacante->nome);
+        printf("Ataque cancelado: Atacante '%s' precisa de pelo menos 2 tropas (1 fica na defesa).\n", atacante->nome);
         return;
     }
+    
+    // Verifica se o defensor ainda tem tropas
     if (defensor->tropas <= 0)
     {
         printf("Ataque cancelado: Território já sem tropas.\n");
@@ -451,10 +431,10 @@ void realizar_ataque(Territorio *atacante, Territorio *defensor)
         {
             printf("\n!!! CONQUISTA !!! O território '%s' foi conquistado pelo HUMANO!\n", defensor->nome);
 
-            // Muda o dono e atribui 1 tropa (Passagem por Referência)
+            // Passagem por Referência: Altera o dono e as tropas
             defensor->dono_id = atacante->dono_id;
             defensor->tropas = 1;
-            atacante->tropas--; // O atacante perde 1 tropa para guarnecer o novo território
+            atacante->tropas--; // O atacante perde 1 tropa para guarnecer (custo de ocupação)
 
             printf("-> %s agora é do HUMANO e ficou com 1 tropa do atacante.\n", defensor->nome);
             printf("-> %s perdeu 1 tropa por custo de ocupação. Tropas restantes: %d\n", atacante->nome, atacante->tropas);
@@ -471,72 +451,72 @@ void realizar_ataque(Territorio *atacante, Territorio *defensor)
 
 /**
  * @brief Coleta as escolhas do jogador e chama a simulação de ataque.
- * @return 1 se o ataque ocorreu, 0 caso contrário.
+ * @return 1 se o ataque ocorreu, 0 caso contrário. (Retorno modificado, agora apenas exibe o resultado)
  */
 int processar_ataque(Territorio *mapa, const int num_territorios)
 {
     int atacante_id, defensor_id;
     Territorio *atacante, *defensor;
-
+    
+    
     printf("\nEscolha o Território Atacante (Seu, ID 1 a %d): ", num_territorios);
-    if (scanf("%d", &atacante_id) != 1 || atacante_id < 1 || atacante_id > num_territorios)
+    if (scanf("%d%*[^\n]", &atacante_id) != 1)
     {
         printf("ID de atacante inválido.\n");
-        while (getchar() != '\n')
-            ;
+        limpar_buffer();
         return 0;
     }
 
     printf("Escolha o Território Defensor (Inimigo, ID 1 a %d): ", num_territorios);
-    if (scanf("%d", &defensor_id) != 1 || defensor_id < 1 || defensor_id > num_territorios)
+    if (scanf("%d%*[^\n]", &defensor_id) != 1)
     {
         printf("ID de defensor inválido.\n");
-        while (getchar() != '\n')
-            ;
+        limpar_buffer();
         return 0;
     }
 
+    // Verificação de ID dentro do limite
+    if (atacante_id < 1 || atacante_id > num_territorios || defensor_id < 1 || defensor_id > num_territorios)
+    {
+        printf("Erro: Um dos IDs está fora do intervalo válido (1 a %d).\n", num_territorios);
+        printf("\nPressione ENTER para continuar...");
+        getchar();
+        return 0;
+    }
+    
     atacante = &mapa[atacante_id - 1];
     defensor = &mapa[defensor_id - 1];
 
     if (atacante->dono_id != ID_JOGADOR_HUMANO)
     {
-        printf("Erro: O território atacante escolhido não pertence a você.\n");
+        printf("Erro: O território atacante escolhido ('%s') não pertence a você.\n", atacante->nome);
+        printf("\nPressione ENTER para continuar...");
+        getchar();
         return 0;
     }
 
     if (defensor->dono_id != ID_JOGADOR_VERDE)
     {
-        printf("Erro: O território defensor escolhido já é seu ou neutro/inválido.\n");
+        printf("Erro: O território defensor escolhido ('%s') não pertence ao inimigo VERDE.\n", defensor->nome);
+        printf("\nPressione ENTER para continuar...");
+        getchar();
         return 0;
     }
 
     if (atacante_id == defensor_id)
     {
         printf("Um território não pode atacar a si mesmo!\n");
+        printf("\nPressione ENTER para continuar...");
+        getchar();
         return 0;
     }
 
-    // Chama a simulação de ataque
+    // Chama a simulação de ataque (onde a modificação do mapa acontece - Passagem por Referência)
     realizar_ataque(atacante, defensor);
 
     printf("\nPressione ENTER para continuar...");
-    while (getchar() != '\n')
-        ;
+    // Garante que qualquer lixo de entrada anterior foi consumido
     getchar(); // Espera por ENTER
 
-    return 1;
-}
-
-const Territorio *encontrar_territorio_por_id(const Territorio *mapa, const int num_territorios, const int id_alvo)
-{
-    for (int i = 0; i < num_territorios; i++)
-    {
-        // Uso de const: retorna um ponteiro que não pode modificar a estrutura.
-        if (mapa[i].id == id_alvo)
-        {
-            return &mapa[i];
-        }
-    }
-    return NULL;
+    return 1; // Ataque processado com sucesso (mesmo que sem alteração, se houver erro na tropa, a função `realizar_ataque` já tratou)
 }
